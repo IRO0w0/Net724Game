@@ -52,6 +52,8 @@ public class StageManager : MonoBehaviour
 
             // 스테이지의 장애물 제거
             Destroy(obstaclesGroup);
+
+            //플레이어 딜레이
         }
     }
 
