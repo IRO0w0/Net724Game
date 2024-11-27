@@ -5,7 +5,7 @@ using System.Collections;
 
 public class PlayerManager : MonoBehaviour
 {
-    // 안전한 싱글톤 인스턴스
+    // 싱글톤 인스턴스
     private static PlayerManager _instance;
     public static PlayerManager Instance
     {
@@ -42,7 +42,9 @@ public class PlayerManager : MonoBehaviour
     private Vector3 targetPosition; // 이동 목표 위치
     private bool isMoving = false;  // 이동 중인지 여부
     private bool isFirstDeath = true;
+    private bool isDead = false; // 사망 상태 확인 플래그
 
+    private Quaternion initialRotation; // 초기 방향 저장
     private Animator animator;
 
     public static event Action OnPlayerMoveComplete; // 이동 완료 이벤트
@@ -68,6 +70,7 @@ public class PlayerManager : MonoBehaviour
         playerHP = maxHealth;
         animator = GetComponent<Animator>();
         targetPosition = transform.position;
+        initialRotation = transform.rotation; // 초기 방향 저장
         firstDeathCoroutine = null;
 
         if (respawnPoint == Vector3.zero)
@@ -81,9 +84,17 @@ public class PlayerManager : MonoBehaviour
 
     private void Update()
     {
+        if (isDead) return; // 사망 중에는 업데이트 중지
+
         if (!isMoving && playerHP > 0) // 사망하지 않았을 때만 이동 입력 처리
         {
             HandleMovementInput();
+        }
+        // Y좌표가 -1 이하로 떨어지면 체력을 0으로 설정
+        if (transform.position.y <= -1f)
+        {
+            playerHP = 0;
+            Die();
         }
 
         if (playerHP <= 0) // 체력이 0 이하이면 사망 처리
@@ -96,22 +107,27 @@ public class PlayerManager : MonoBehaviour
             MoveTowardsTarget();
         }
     }
+
     public void MoveUp()
     {
         Move(Vector3.forward);
     }
+
     public void MoveBack()
     {
         Move(Vector3.back);
     }
+
     public void MoveLeft()
     {
         Move(Vector3.left);
     }
+
     public void MoveRight()
     {
         Move(Vector3.right);
     }
+
     private void HandleMovementInput()
     {
         if (Input.GetKeyDown(KeyCode.W)) Move(Vector3.forward);
@@ -119,6 +135,7 @@ public class PlayerManager : MonoBehaviour
         else if (Input.GetKeyDown(KeyCode.A)) Move(Vector3.left);
         else if (Input.GetKeyDown(KeyCode.D)) Move(Vector3.right);
     }
+
     private void Move(Vector3 direction)
     {
         targetPosition = transform.position + direction * moveDistance;
@@ -178,58 +195,52 @@ public class PlayerManager : MonoBehaviour
 
     private void Die()
     {
+        if (isDead) return; // 이미 사망 처리 중이라면 중복 실행 방지
+        isDead = true;
+
         Debug.Log("플레이어가 사망했습니다.");
         if (isFirstDeath)
         {
-
             firstDeathCoroutine = StartCoroutine(ShowDeathImagesAndRespawn());
         }
-        else if(firstDeathCoroutine == null)
+        else
         {
-            HandleDeath();
-            Respawn();
-            GameManager.Instance.ResetTurn();
+            StartCoroutine(RespawnAfterDelay());
         }
     }
 
     IEnumerator ShowDeathImagesAndRespawn()
     {
         isFirstDeath = false;
-        deathCanvas.gameObject.SetActive(true); // 캔버스 활성화
+        deathCanvas.gameObject.SetActive(true);
 
         foreach (RawImage img in deathImages)
         {
-            img.gameObject.SetActive(false); // 이미지 초기화
+            img.gameObject.SetActive(false);
         }
-        Debug.Log("플레이어가 사망했습니다.ㅆㅆㅆㅅ");
-        // 이미지 순차적으로 보여주기
+
         for (int i = 0; i < deathImages.Length; i++)
         {
             RawImage currentImage = deathImages[i];
-            Debug.Log("플레이어가 사망했습니다.123313232");
-            currentImage.gameObject.SetActive(true); // 이미지 활성화
-            currentImage.canvasRenderer.SetAlpha(0f); // 투명하게 설정
-            StartCoroutine(FadeIn(currentImage)); // 페이드인
-            Debug.Log("플레이어가 사망했습니다.1111111");
-            Debug.Log(deathImages.Length);
-            yield return new WaitForSeconds(1f - fadeDuration); // 유지 시간
-
-            StartCoroutine(FadeOut(currentImage)); // 페이드아웃
-            Debug.Log("플레이어가 사망했습니다.2222");
+            currentImage.gameObject.SetActive(true);
+            currentImage.canvasRenderer.SetAlpha(0f);
+            StartCoroutine(FadeIn(currentImage));
+            yield return new WaitForSeconds(1f - fadeDuration);
+            StartCoroutine(FadeOut(currentImage));
             yield return new WaitForSeconds(1f);
-            Debug.Log("플레이어가 사망했습니다.@@@@@@@@@@@@@@@@");
-
-            currentImage.gameObject.SetActive(false); // 비활성화
-            
+            currentImage.gameObject.SetActive(false);
         }
 
-        deathCanvas.gameObject.SetActive(false); // 캔버스 숨기기
-        firstDeathCoroutine = null;
-        HandleDeath(); // 사망 처리
+        deathCanvas.gameObject.SetActive(false);
+        yield return RespawnAfterDelay();
+    }
 
-        yield return new WaitForSeconds(respawnDelay); // 리스폰 대기
-        Respawn(); // 리스폰 처리
-        GameManager.Instance.ResetTurn(); // 턴 초기화
+    private IEnumerator RespawnAfterDelay()
+    {
+        yield return new WaitForSeconds(respawnDelay);
+        Respawn();
+        GameManager.Instance.ResetTurn();
+        isDead = false;
     }
 
     private IEnumerator FadeIn(RawImage image)
@@ -244,18 +255,28 @@ public class PlayerManager : MonoBehaviour
         yield return new WaitForSeconds(fadeDuration);
     }
 
-
-    private void HandleDeath()
-    {
-        Destroy(gameObject);
-    }
-
     public void Respawn()
     {
         Debug.Log("Player Respawned!");
-        GameObject newPlayer = Instantiate(playerPrefab, respawnPoint, Quaternion.identity);
-        PlayerManager playerController = newPlayer.GetComponent<PlayerManager>();
-        playerController.animator = newPlayer.GetComponent<Animator>();
+        transform.position = respawnPoint;
+        transform.rotation = initialRotation; // 초기 방향으로 설정
         playerHP = maxHealth;
+
+        // 이동 상태 초기화
+        isMoving = false;
+        targetPosition = transform.position;
+
+        // 애니메이션 초기화
+        animator.Rebind();
+        animator.Update(0f);
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (other.CompareTag("Checkpoint"))
+        {
+            respawnPoint = other.transform.position; // 리스폰 지역 업데이트
+            Debug.Log("새로운 리스폰 지역 설정됨: " + respawnPoint);
+        }
     }
 }
