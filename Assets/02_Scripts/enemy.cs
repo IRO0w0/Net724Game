@@ -14,13 +14,21 @@ public class Enemy : MonoBehaviour
     private Vector3 targetPosition; // 적이 이동할 목표 위치
     public float speed = 5f; // 적 이동 속도 (초당 이동할 거리)
 
+    private Vector3 initialPosition; // 적의 초기 위치 저장
+    private Quaternion initialRotation; // 적의 초기 방향 저장
+
     Animator animator;
 
     void Start()
     {
         animator = GetComponent<Animator>();
+        // 초기 위치와 방향 저장
+        initialPosition = transform.position;
+        initialRotation = transform.rotation;
+
         // 플레이어의 초기 위치 저장
         playerLastPosition = player.transform.position;
+
         // 플레이어 이동 완료 이벤트 구독
         PlayerManager.OnPlayerMoveComplete += MoveEnemyOnPlayerMove;
 
@@ -85,6 +93,26 @@ public class Enemy : MonoBehaviour
         {
             animator.SetBool("IsRun", false);
         }
+
+        // 플레이어 HP가 0이면 적 초기화
+        if (PlayerManager.playerHP <= 0)
+        {
+            ResetEnemyPositionAndRotation();
+        }
     }
 
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (collision.gameObject.CompareTag("Player"))
+        {
+            PlayerManager.TakeDamage(PlayerManager.playerHP); // 플레이어 체력을 0으로 설정
+        }
+    }
+
+    private void ResetEnemyPositionAndRotation()
+    {
+        transform.position = initialPosition; // 초기 위치로 이동
+        transform.rotation = initialRotation; // 초기 방향으로 회전
+        animator.SetBool("IsRun", false); // 이동 애니메이션 중지
+    }
 }

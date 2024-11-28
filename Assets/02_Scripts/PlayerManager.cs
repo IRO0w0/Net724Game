@@ -107,45 +107,60 @@ public class PlayerManager : MonoBehaviour
             MoveTowardsTarget();
         }
     }
+    private bool canMove = true; // 입력 가능 상태 변수
 
-    public void MoveUp()
+    private IEnumerator EnableInputAfterDelay()
     {
-        Move(Vector3.forward);
-    }
-
-    public void MoveBack()
-    {
-        Move(Vector3.back);
-    }
-
-    public void MoveLeft()
-    {
-        Move(Vector3.left);
-    }
-
-    public void MoveRight()
-    {
-        Move(Vector3.right);
-    }
-
-    private void HandleMovementInput()
-    {
-        if (Input.GetKeyDown(KeyCode.W)) Move(Vector3.forward);
-        else if (Input.GetKeyDown(KeyCode.S)) Move(Vector3.back);
-        else if (Input.GetKeyDown(KeyCode.A)) Move(Vector3.left);
-        else if (Input.GetKeyDown(KeyCode.D)) Move(Vector3.right);
+        canMove = false; // 입력 비활성화
+        yield return new WaitForSeconds(1f); // 1초 대기
+        canMove = true; // 입력 활성화
     }
 
     private void Move(Vector3 direction)
     {
+        if (!canMove) return; // 입력 불가능하면 리턴
+
         targetPosition = transform.position + direction * moveDistance;
         transform.rotation = Quaternion.LookRotation(direction);
 
         if (!CheckCollisionAtTargetPosition())
         {
             isMoving = true;
+            animator.SetBool("IsRun", true); // 이동 애니메이션 시작
             GameManager.Instance.IncrementTurn();
+
+            StartCoroutine(EnableInputAfterDelay()); // 1초 뒤 입력 활성화
         }
+    }
+
+    private void HandleMovementInput()
+    {
+        if (!canMove) return; // 입력 불가능하면 리턴
+
+        if (Input.GetKeyDown(KeyCode.W)) Move(Vector3.forward);
+        else if (Input.GetKeyDown(KeyCode.S)) Move(Vector3.back);
+        else if (Input.GetKeyDown(KeyCode.A)) Move(Vector3.left);
+        else if (Input.GetKeyDown(KeyCode.D)) Move(Vector3.right);
+    }
+
+    public void MoveUp()
+    {
+        if (canMove) Move(Vector3.forward);
+    }
+
+    public void MoveBack()
+    {
+        if (canMove) Move(Vector3.back);
+    }
+
+    public void MoveLeft()
+    {
+        if (canMove) Move(Vector3.left);
+    }
+
+    public void MoveRight()
+    {
+        if (canMove) Move(Vector3.right);
     }
 
     private void MoveTowardsTarget()
@@ -178,15 +193,23 @@ public class PlayerManager : MonoBehaviour
     }
 
     private void OnCollisionEnter(Collision collision)
-    {
+    { 
         if (collision.gameObject.CompareTag("Block"))
         {
             Block block = collision.gameObject.GetComponent<Block>();
             block?.HitByPlayer();
         }
+        // Enemy와 충돌 시 체력을 0으로 설정
+        if (collision.gameObject.CompareTag("Enemy"))
+        {
+            Debug.Log("Enemy와 충돌! 플레이어 체력이 0이 됩니다.");
+            playerHP = 0;
+            Die();
+        }
 
         GameManager.Instance.HandleCollision(collision.gameObject);
     }
+
 
     public static void TakeDamage(int damage)
     {
